@@ -1,0 +1,20 @@
+*.pem
+*.pyc
+
+super-det/hpe-hpc-launcher-*.x86_64.rpm
+super-det/hpe-mlde-master_*-ee_linux_amd64.tar.gz
+super-det/super-det.tar.gz
+
+collectl/*.gz
+
+# Virtual environment
+__venv__
+
+# IDEs
+# pycharm
+.idea
+
+# Distribution / packaging
+__build__/
+__dist__/
+*.egg-info/
