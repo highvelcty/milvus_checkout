@@ -68,11 +68,18 @@ def add_user(root_client) -> MilvusClient:
         if 'already exists' not in str(err):
             raise err
 
-    root_client.grant_privilege(USERROLE, 'Global', 'All', 'All')
-    root_client.grant_privilege(USERROLE, 'Global', '*', '*')
-    root_client.grant_privilege(USERROLE, 'Global', 'CreateCollection', 'CreateCollection')
-    root_client.grant_privilege(USERROLE, 'Collection', '*', '*')
-    root_client.grant_privilege(USERROLE, 'User', '*', '*')
+    root_client.grant_privilege(role_name=USERROLE,
+                                object_type='Global',
+                                privilege='All',
+                                object_name='*')
+    root_client.grant_privilege(role_name=USERROLE,
+                                object_type='Global',
+                                privilege='CreateCollection',
+                                object_name='CreateCollection')
+    root_client.grant_privilege(role_name=USERROLE,
+                                object_type='Global',
+                                privilege='ShowCollections',
+                                object_name='ShowCollections')
     root_client.grant_role(USERNAME, USERROLE)
 
     return MilvusClient(URI, USERNAME, password=USERPASS)
@@ -118,9 +125,7 @@ def create_collection(client: MilvusClient):
 
     index_params = client.prepare_index_params()
 
-    index_params.add_index(
-        field_name=FieldName.PK
-    )
+    index_params.add_index(field_name=FieldName.PK)
 
     index_params.add_index(
         field_name=FieldName.EMBEDDINGS,
@@ -139,8 +144,10 @@ def main():
     root_client = MilvusClient(URI, user=ROOT_USER, password=ROOT_PASS)
     remove_user(root_client)
     user_client = add_user(root_client)
-
     create_collection(user_client)
+
+    print(f'root client list collections: {root_client.list_collections()}')
+    print(f'{USERNAME} list collections: {user_client.list_collections()}')
 
 
 if __name__ == '__main__':
