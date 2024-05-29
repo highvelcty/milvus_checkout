@@ -6,11 +6,15 @@ import sys
 import time
 
 from repo_tools import paths
-from demo_client import DemoClient
+from demo_client import CollectionEntity, DemoClient
 import numpy as np
 
 
-class BaseTest(TestCase):
+class BaseLocalTest(TestCase):
+    """
+    Subclass this will cause a local milvus instance to be created/destroyed encompassing the
+    class tests.
+    """
     @classmethod
     def setUpClass(cls):
         sys.stdout.write('Restarting the local milvus server...')
@@ -42,35 +46,37 @@ class BaseTest(TestCase):
             raise subprocess.CalledProcessError(proc.returncode, cmd, proc.stdout)
 
 
-class TestDemoClient(BaseTest):
+class TestDemoClient(TestCase):
     def test_construction(self):
-        demo_client = DemoClient('test_user', 'test_password')
-        demo_client.close_and_delete_all()
-
-    def test_context(self):
-        test_username = 'test_user'
-        with DemoClient(test_username, 'test_password') as client:
-            self.assertEqual(test_username, client.username)
+        DemoClient('test_user', 'test_password')
 
     def test_insert_and_search(self):
-        test_pk = 'test_pk'
-        with DemoClient('test_user', 'test_password') as client:
-            test_embeddings = np.random.rand(client.embedding_dimension).tolist()
-            client.insert(test_pk, test_embeddings)
+        client = DemoClient('test_user', 'test_password')
+
+        entities = list()
+        for ii in range(10):
+            entities.append(
+                CollectionEntity(pk=f'entity_{ii}',
+                                 embeddings=np.random.rand(client.embedding_dimension).tolist()))
+
+        client.insert(*entities)
+
+        results = client.search([entities[-1].embeddings])
+        self.assertEqual({'id': 'entity_9', 'distance': 0.0, 'entity': {'pk': 'entity_9'}},
+                         results[0][0])
 
     def test_multiple_clients(self):
-        test_pk_val = 'test_pk_val'
         clients = list()
         for ii in range(3):
             client = DemoClient('test_user', 'test_password')
             clients.append(client)
             test_embeddings = np.random.rand(client.embedding_dimension).tolist()
-            client.insert(test_pk_val, test_embeddings)
+            client.insert(CollectionEntity(pk='test_pk_val', embeddings=test_embeddings))
         for client in clients:
-            client.close_and_delete_all()
+            client.remove_all()
 
 
-class TestDemoClientLoop(BaseTest):
+class TestDemoClientLoop(TestCase):
     def test(self):
         iterations = 100
         sys.stdout.write(f'Running {iterations} iterations of DemoClient '
@@ -80,16 +86,6 @@ class TestDemoClientLoop(BaseTest):
         for iteration in range(iterations):
             startt = time.time()
             demo_client = DemoClient('test_user', 'test_password')
-            demo_client.close_and_delete_all()
+            demo_client.remove_all()
             sys.stdout.write(f'\titeration: {iteration}, {time.time() - startt}\n')
             iteration += 1
-
-
-class TestDemoClientOpenCloseLoop(TestCase):
-
-    def test_this(self):
-        print(f'emey was here')
-
-
-class Test(TestDemoClientOpenCloseLoop):
-    pass
