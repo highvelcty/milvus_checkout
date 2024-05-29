@@ -147,7 +147,7 @@ def main():
     create_collection(user_client)
 
     print(f'root client list collections: {root_client.list_collections()}')
-    print(f'{USERNAME} list collections: {user_client.list_collections()}')
+    print(f'{USERNAME} client list collections: {user_client.list_collections()}')
 
 
 if __name__ == '__main__':

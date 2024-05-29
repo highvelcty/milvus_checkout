@@ -135,7 +135,9 @@ client.load_collection("hello_milvus")
 # search based on vector similarity
 print(fmt.format("Start searching based on vector similarity"))
 last_entity = entities[-1]  # Get the last entity
-vectors_to_search = [last_entity["embeddings"]]  # Extract the embeddings vector and put it in a list
+
+# Extract the embeddings vector and put it in a list
+vectors_to_search = [last_entity["embeddings"]]
 search_params = {
     "metric_type": "L2",
     "params": {"nprobe": 10},

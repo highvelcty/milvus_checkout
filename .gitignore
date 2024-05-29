@@ -13,4 +13,5 @@ __build__/
 __dist__/
 *.egg-info/
 
-volumes/
+# Created by milvus
+local_server/volumes/

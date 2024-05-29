@@ -4,11 +4,13 @@ import contextlib
 import io
 import random
 import string
+import time
 import unittest
 
 import numpy as np
 import pymilvus.exceptions
 from pymilvus import DataType, MilvusClient
+from grpc._channel import _InactiveRpcError, _MultiThreadedRendezvous
 
 
 URI = 'http://localhost:19530'
@@ -49,7 +51,7 @@ class FieldName:
     EMBEDDINGS = 'embeddings'
 
 
-class Test(unittest.TestCase):
+class BaseTest(unittest.TestCase):
     _root_client = None
     _user1_client = None
     _user2_client = None
@@ -58,65 +60,23 @@ class Test(unittest.TestCase):
     def setUpClass(cls):
         # Create client
         cls._root_client = MilvusClient(URI, user=User.ROOT, password=User.password[User.ROOT])
-
-        # Initialize state
-        cls.tearDownClass()
-
-        cls._user1_client = cls._add_user(cls._root_client, User.USER1)
-        cls._user2_client = cls._add_user(cls._root_client, User.USER2)
-
-        # Create collections
-        for user in User.all_:
-            cls._add_collection(cls._root_client, User.collection[user])
+        cls._user1_client = cls._add_user(User.USER1)
+        cls._user2_client = cls._add_user(User.USER2)
 
     @classmethod
     def tearDownClass(cls):
         for username in (User.USER1, User.USER2):
-            cls._rm_user(cls._root_client, username)
+            cls._rm_user(username)
 
-        for collection_name in cls._root_client.list_collections():
-            cls._root_client.drop_collection(collection_name)
-
-    def test_list_users(self):
-        self.assertEqual(User.all_, self._root_client.list_users())
-
-    def test_list_collections(self):
-        self.assertEqual(sorted(User.collection.values()),
-                         sorted(self._root_client.list_collections()))
-        print(F'emey: {self._user1_client.list_collections()}')
-        #
-        # # The user's should not have admin-like access
-        # self.assertFalse(self._user1_client.list_collections())
-
-    @staticmethod
-    def _add_user(root_client: MilvusClient, username: str) -> MilvusClient:
-        root_client.create_user(username, password=User.password[username])
-
-        try:
-            with contextlib.redirect_stderr(io.StringIO()):
-                root_client.create_role(User.role[username])
-        except pymilvus.exceptions.MilvusException as err:
-            if 'already exists' not in str(err):
-                raise err
-
-        root_client.grant_privilege(role_name=User.role[username],
-                                    object_type='Global',
-                                    privilege='All',
-                                    object_name='*')
-        root_client.grant_privilege(role_name=User.role[username],
-                                    object_type='Global',
-                                    privilege='CreateCollection',
-                                    object_name= 'CreateCollection')
-        root_client.grant_privilege(role_name=User.role[username],
-                                    object_type='Global',
-                                    privilege='ShowCollections',
-                                    object_name='ShowCollections')
-        root_client.grant_role(username, User.role[username])
-
+    @classmethod
+    def _add_user(cls, username: str) -> MilvusClient:
+        cls._root_client.create_user(username, password=User.password[username])
         return MilvusClient(URI, username, password=User.password[username])
 
-    @staticmethod
-    def _add_collection(client: MilvusClient, collection_name: str):
+    @classmethod
+    def _add_collection(cls, collection_name: str, client: MilvusClient = None):
+        if client is None:
+            client = cls._root_client
         schema = client.create_schema(
             auto_id=False,
             enable_dynamic_fields=True,
@@ -176,39 +136,187 @@ class Test(unittest.TestCase):
             index_params=index_params
         )
 
-    @staticmethod
-    def _rm_collection(root_client: MilvusClient, collection_name: str):
-        root_client.drop_collection(collection_name)
+    @classmethod
+    def _rm_collection(cls, collection_name: str, client: MilvusClient = None):
+        if client is None:
+            client = cls._root_client
+        client.drop_collection(collection_name)
 
-    @staticmethod
-    def _rm_user(root_client: MilvusClient, username: str):
+    @classmethod
+    def _rm_user(cls, username: str):
+        cls._root_client.drop_user(username)
+
+
+class Test(BaseTest):
+    def test_list_users(self):
+        self.assertEqual(User.all_, self._root_client.list_users())
+
+    def test_list_collections(self):
+        self._rm_collection(User.collection[User.ROOT])
+        self.assertFalse(self._root_client.list_collections())
+        self.assertEqual([], self._user1_client.list_collections())
+        self._add_collection(User.collection[User.ROOT])
+        self.assertEqual([User.collection[User.ROOT]], self._root_client.list_collections())
+        self.assertEqual([], self._user1_client.list_collections())
+        self._rm_collection(User.collection[User.ROOT])
+        self.assertEqual([], self._root_client.list_collections())
+
+    def test_create_collection(self):
+        self._add_collection(User.collection[User.ROOT])
+        self._rm_collection(User.collection[User.ROOT])
+
+        with self.assertRaises(_MultiThreadedRendezvous), \
+             contextlib.redirect_stderr(io.StringIO()):
+            self._add_collection(User.collection[User.USER1], self._user1_client)
+
+
+class TestWithPrivileges(BaseTest):
+    def test_list_collections(self):
+        error_str = ''
+        self._add_privileges(User.USER1, 'Global', 'All', '*')
+        self._add_privileges(User.USER1, 'Global', 'CreateCollection', 'CreateCollection')
+        self._add_privileges(User.USER1, 'Global', 'ShowCollections', 'ShowCollections')
+        try:
+            self._add_collection(User.collection[User.USER1], self._user1_client)
+        except (_InactiveRpcError, _MultiThreadedRendezvous) as err:
+            error_str = f'Permission denied hit while creating user collection:\n{err}'
+
+        self._add_collection(User.collection[User.ROOT])
+        user_visible_collections = self._user1_client.list_collections()
+        root_visible_collections = self._root_client.list_collections()
+
+        if not error_str:
+            try:
+                self._rm_collection(User.collection[User.USER1], self._user1_client)
+            except (_InactiveRpcError, _MultiThreadedRendezvous) as err:
+                error_str = f'Permission denied hit while removing user collection:\n{err}'
+
+        self._rm_collection(User.collection[User.ROOT], self._root_client)
+        self._rm_role_and_privileges(User.USER1)
+
+        self.assertEqual(root_visible_collections, user_visible_collections)
+        self.assertTrue(user_visible_collections)
+        self.assertFalse(error_str)
+
+    def test_load_and_search_collection(self):
+        timeout_sec = 30
+        delay_sec = 5
+        error_str = ''
+
+        # Add collection creation privileges
+        self._add_privileges(User.USER1, 'Global', 'All', '*')
+        self._add_privileges(User.USER1, 'Global', 'CreateCollection', 'CreateCollection')
+        time.sleep(delay_sec)
+
+        # Create a collection
+        try:
+            self._add_collection(User.collection[User.USER1], self._user1_client)
+        except (_InactiveRpcError, _MultiThreadedRendezvous) as err:
+            error_str = (f'Permission denied hit while creating collection '
+                         f'{User.collection[User.USER1]}.\n{err}')
+        time.sleep(delay_sec)
+
+        # Add collection loading privileges
+        self._add_privileges(User.USER1, 'Collection', 'Load', '*')
+        time.sleep(delay_sec)
+
+        # Load collection
+        try:
+            self._user1_client.load_collection(User.collection[User.USER1])
+        except (_InactiveRpcError, _MultiThreadedRendezvous):
+            error_str = f'Permission denied hit when attempting to load {User.USER1} collection.'
+        except pymilvus.exceptions.MilvusException as err:
+            if 'collection not found' in err:
+                error_str = (f'Collection not found error hit when attempting to load '
+                             f'collection "{User.collection[User.USER1]}".\n{err}')
+            else:
+                raise
+
+        # Search collection
+        search_params = {
+            "metric_type": "L2",
+            "params": {"nprobe": 10},
+        }
+
+        result = self._user1_client.search(
+            collection_name=User.collection[User.USER1],
+            data=[VECTOR_TO_SEARCH],
+            anns_field="embeddings",
+            search_params=search_params,
+            limit=3,
+            output_fields=["random"]
+        )
+
+        print(result)
+
+        # Remove collection
+        try:
+            self._rm_collection(User.collection[User.USER1], self._user1_client)
+        except (_InactiveRpcError, _MultiThreadedRendezvous) as err:
+            error_str = (f'Permission denied when attempting to remove collection "'
+                         f'{User.collection[User.USER1]}.\n{err}')
+
+        # Remove role and privileges
+        self._rm_role_and_privileges(User.USER1)
+
+        # Assertions
+        self.assertFalse(error_str)
+
+    @classmethod
+    def _add_privileges(cls, username: str, object_type: str, privilege: str, object_name: str):
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                cls._root_client.create_role(User.role[username])
+        except pymilvus.exceptions.MilvusException as err:
+            if 'already exists' not in str(err):
+                raise err
+
+        cls._root_client.grant_privilege(role_name=User.role[username],
+                                         object_type='Global',
+                                         privilege='All',
+                                         object_name='*')
+        cls._root_client.grant_privilege(role_name=User.role[username],
+                                         object_type='Global',
+                                         privilege='CreateCollection',
+                                         object_name='CreateCollection')
+        cls._root_client.grant_privilege(role_name=User.role[username],
+                                         object_type='Global',
+                                         privilege='ShowCollections',
+                                         object_name='ShowCollections')
+        cls._root_client.grant_role(username, User.role[username])
+
+    @classmethod
+    def _rm_role_and_privileges(cls, username: str):
         try:
             with contextlib.redirect_stderr(io.StringIO()):
                 # .. note:: The typehint is List[Dict], but functionally it is Dict.
                 # noinspection PyTypeChecker
-                privileges = root_client.describe_role(User.role[username])['privileges']
+                privileges = cls._root_client.describe_role(User.role[username])['privileges']
         except pymilvus.exceptions.MilvusException:
             privileges = []
 
         # .. note:: describe role is type hinted as List[Dict], but the actual return is Dict.
         for privilege in privileges:
-            root_client.revoke_privilege(User.role[username],
-                                         privilege['object_type'],
-                                         privilege['privilege'],
-                                         privilege['object_name'])
+            cls._root_client.revoke_privilege(User.role[username],
+                                              privilege['object_type'],
+                                              privilege['privilege'],
+                                              privilege['object_name'])
         try:
             with contextlib.redirect_stderr(io.StringIO()):
-                root_client.revoke_role(username, User.role[username])
+                cls._root_client.revoke_role(username, User.role[username])
         except pymilvus.exceptions.MilvusException:
             pass
 
         try:
             with contextlib.redirect_stderr(io.StringIO()):
-                root_client.drop_role(User.role[username])
+                cls._root_client.drop_role(User.role[username])
         except pymilvus.exceptions.MilvusException:
             pass
 
-        root_client.drop_user(username)
+    @classmethod
+    def _rm_user(cls, username: str):
+        cls._rm_role_and_privileges(username)
+        super()._rm_user(username)
 
 
 if __name__ == '__main__':
