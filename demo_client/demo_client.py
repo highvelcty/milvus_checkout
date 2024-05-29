@@ -84,10 +84,10 @@ class DemoClient:
         self._user_client.insert(collection_name=self._collection_name,
                                  data=list(entities))
 
-    def search(self, vectors_to_search: List[np.array], limit: int = 3):
+    def search(self, *vectors_to_search: np.array, limit: int = 3):
         return self._user_client.search(
             collection_name=self._collection_name,
-            data=vectors_to_search,
+            data=list(vectors_to_search),
             anns_field=CollectionEntity.Key.EMBEDDINGS,
             search_params={"metric_type": "L2", "params": {"nprobe": 10}},
             limit=limit,
