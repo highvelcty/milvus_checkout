@@ -1,6 +1,5 @@
 import io
-from collections import UserDict
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 import contextlib
 import os
 import sys
@@ -186,6 +185,8 @@ class DemoClient:
             timeout = time.time() + self._GRANT_PRIVILEGES_TIMEOUT_SEC
             exp_privilege_count = 18
             while time.time() < timeout:
+                # .. note:: The typehint is List[Dict], but functionally it is Dict.
+                # noinspection PyTypeChecker
                 privilege_count = (
                     len(self._root_client.describe_role(self._role_name)['privileges']))
                 if exp_privilege_count <= privilege_count:
