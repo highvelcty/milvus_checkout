@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import skipIf, TestCase
 import shlex
 import subprocess
 import sys
@@ -47,17 +47,34 @@ class BaseLocalTest(TestCase):
 
 
 class TestDemoClient(TestCase):
-    def test_construction(self):
-        DemoClient('test_user', 'test_password')
+    _test_user = 'test_user'
+    _test_password = 'test_password'
+    _test_pk_val = 'test_pk_val'
+
+    def test_construction_and_removal(self):
+        client = DemoClient(self._test_user, self._test_password)
+        client.remove_all()
+
+    def test_context(self):
+        with DemoClient(self._test_user, self._test_password):
+            pass
+
+    def test_close(self):
+        DemoClient(self._test_user, self._test_password).close()
+
+    def test_remove_all_and_close(self):
+        client = DemoClient(self._test_user, self._test_password)
+        client.remove_all()
+        client.close()
 
     def test_insert_and_search(self):
-        client = DemoClient('test_user', 'test_password')
+        client = DemoClient(self._test_user, self._test_password)
 
         entities = list()
         for ii in range(10):
             entities.append(
                 CollectionEntity(pk=f'entity_{ii}',
-                                 embeddings=np.random.rand(client.embedding_dimension).tolist()))
+                                 embeddings=np.random.rand(client.vector_dimension)))
 
         client.insert(*entities)
 
@@ -69,24 +86,26 @@ class TestDemoClient(TestCase):
     def test_multiple_clients(self):
         clients = list()
         for ii in range(3):
-            client = DemoClient('test_user', 'test_password')
+            client = DemoClient(self._test_user, self._test_password)
             clients.append(client)
-            test_embeddings = np.random.rand(client.embedding_dimension).tolist()
-            client.insert(CollectionEntity(pk='test_pk_val', embeddings=test_embeddings))
+            test_embeddings = np.random.rand(client.vector_dimension)
+            client.insert(CollectionEntity(pk=self._test_pk_val, embeddings=test_embeddings))
         for client in clients:
             client.remove_all()
 
 
+@skipIf(True, 'Long running test.')
 class TestDemoClientLoop(TestCase):
     def test(self):
         iterations = 100
-        sys.stdout.write(f'Running {iterations} iterations of DemoClient '
-                         f'construction/destruction...\n')
-        sys.stdout.flush()
+        print(f'Running {iterations} iterations of DemoClient construction and removal...')
+        print(f'iteration, elapsed_time_seconds')
 
         for iteration in range(iterations):
             startt = time.time()
             demo_client = DemoClient('test_user', 'test_password')
             demo_client.remove_all()
-            sys.stdout.write(f'\titeration: {iteration}, {time.time() - startt}\n')
+            #
+            demo_client.close()
+            print(f'{iteration}, {time.time() - startt}')
             iteration += 1

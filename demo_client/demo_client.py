@@ -47,25 +47,31 @@ class DemoClient:
 
     def __init__(self, username: str, password: str,
                  uri: str = os.environ.get('MILVUS_DEMO_URI', 'http://localhost:19530'),
-                 embedding_dimension: int = os.environ.get('MILVUS_DEMO_EMBEDDING_DIMENSION', 8)):
+                 vector_dimension: int = os.environ.get('MILVUS_DEMO_VECTOR_DIMENSION', 8)):
         self._username = username
         self._collection_name = username + '_collection'
         self._role_name = username + '_role'
         self._uri = uri
-        self._embedding_dimension = embedding_dimension
+        self._vector_dimension = vector_dimension
 
         self._root_client = pymilvus.MilvusClient(uri, user='root', password='Milvus')
 
         self._user_client = self._add_user(uri, username, password)
         self._add_collection()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
     @property
     def collection_name(self) -> str:
         return self._collection_name
 
     @property
-    def embedding_dimension(self) -> int:
-        return self._embedding_dimension
+    def vector_dimension(self) -> int:
+        return self._vector_dimension
 
     @property
     def role_name(self):
@@ -78,6 +84,18 @@ class DemoClient:
     @property
     def username(self):
         return self._username
+
+    @property
+    def root_client(self) -> pymilvus.MilvusClient:
+        return self._root_client
+
+    @property
+    def user_client(self) -> pymilvus.MilvusClient:
+        return self._user_client
+
+    def close(self):
+        self._user_client.close()
+        self._root_client.close()
 
     def insert(self, *entities: Union[CollectionEntity, dict]):
         self._user_client.insert(collection_name=self._collection_name,
@@ -113,7 +131,8 @@ class DemoClient:
         schema.add_field(field_name=CollectionEntity.Key.PK,
                          datatype=pymilvus.DataType.VARCHAR, is_primary=True, max_length=100)
         schema.add_field(field_name=CollectionEntity.Key.EMBEDDINGS,
-                         datatype=pymilvus.DataType.FLOAT_VECTOR, dim=self._embedding_dimension)
+                         datatype=pymilvus.DataType.FLOAT_VECTOR,
+                         dim=self._vector_dimension)
 
         self._user_client.create_collection(collection_name=self._collection_name,
                                             schema=schema,
@@ -121,6 +140,7 @@ class DemoClient:
 
         index_params = self._user_client.prepare_index_params()
 
+        # workaround for https://github.com/milvus-io/milvus/issues/32632
         conn = self._user_client._get_connection()
 
         index_params.add_index(field_name=CollectionEntity.Key.PK)
@@ -172,8 +192,7 @@ class DemoClient:
                                 ('Collection', 'Query', '*'),
                                 ('Collection', 'GetStatistics', '*'))
 
-        # This retry mechanism is a workaround for bug
-        # https://github.com/milvus-io/milvus/issues/32632
+        # workaround for https://github.com/milvus-io/milvus/issues/32632
         for retry in range(self._CMD_RETRIES):
             for privilege in requested_privileges:
                 self._root_client.grant_privilege(role_name=self._role_name,
@@ -183,13 +202,17 @@ class DemoClient:
 
             time.sleep(self._CMD_POLLING_SEC)
             timeout = time.time() + self._GRANT_PRIVILEGES_TIMEOUT_SEC
+
+            # 18 was chosen from experimentation, e.g `time.sleep(60); print(len(privileges))`
+            # pymilvus.__version__ is 2.4.3
+            # server version
             exp_privilege_count = 18
             while time.time() < timeout:
                 # .. note:: The typehint is List[Dict], but functionally it is Dict.
                 # noinspection PyTypeChecker
-                privilege_count = (
+                len_privileges = (
                     len(self._root_client.describe_role(self._role_name)['privileges']))
-                if exp_privilege_count <= privilege_count:
+                if exp_privilege_count <= len_privileges:
                     break
                 else:
                     time.sleep(self._CMD_POLLING_SEC)
