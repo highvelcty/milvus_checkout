@@ -61,7 +61,8 @@ class TestDemoClient(TestCase):
 
         client.insert(*entities)
 
-        results = client.search([entities[-1].embeddings])
+        results = client.search(entities[-1].embeddings)
+
         self.assertEqual({'id': 'entity_9', 'distance': 0.0, 'entity': {'pk': 'entity_9'}},
                          results[0][0])
 
