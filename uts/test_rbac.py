@@ -8,6 +8,7 @@ import time
 import unittest
 
 import numpy as np
+from packaging.version import Version
 import pymilvus.exceptions
 from pymilvus import DataType, MilvusClient
 from grpc._channel import _InactiveRpcError, _MultiThreadedRendezvous
@@ -172,6 +173,11 @@ class Test(BaseTest):
 
 class TestWithPrivileges(BaseTest):
     def test_list_collections(self):
+        exp_version = Version('2.4.3')
+        if Version(pymilvus.__version__) <= exp_version:
+            raise unittest.SkipTest(f'{pymilvus.__version__} is less than or equal '
+                                    f'to {exp_version}.\n'
+                                    f'  See: https://github.com/milvus-io/milvus/issues/33382')
         error_str = ''
         self._add_privileges(User.USER1, 'Global', 'All', '*')
         self._add_privileges(User.USER1, 'Global', 'CreateCollection', 'CreateCollection')
@@ -321,101 +327,3 @@ class TestWithPrivileges(BaseTest):
 
 if __name__ == '__main__':
     unittest.main()
-
-
-    # def _add_privileges(self, user, object_type, privilege, object_name):
-    #     # Create a role
-    #     role = User.role[user]
-    #
-    #     try:
-    #         with contextlib.redirect_stderr(io.StringIO()):
-    #             self._root_client.create_role(role)
-    #     except pymilvus.exceptions.MilvusException as err:
-    #         if 'already exists' not in str(err):
-    #             raise err
-    #     # Grant privileges to the role
-    #     self._root_client.grant_privilege(role, object_type, privilege, object_name)
-    #     # Grant the role to the user
-    #     self._root_client.grant_role(user, role)
-
-    # def _rm_privileges(self, user: str):
-    #     role = User.role[user]
-    #
-    #     try:
-    #         with contextlib.redirect_stderr(io.StringIO()):
-    #             # .. note:: The typehint is List[Dict], but functionally it is Dict.
-    #             # noinspection PyTypeChecker
-    #             privileges = self._root_client.describe_role(User.role[User.USER1])['privileges']
-    #     except pymilvus.exceptions.MilvusException:
-    #         privileges = []
-    #
-    #     # .. note:: describe role is type hinted as List[Dict], but the actual return is Dict.
-    #     for privilege in privileges:
-    #         self._root_client.revoke_privilege(role, privilege['object_type'],
-    #                                            privilege['privilege'], privilege['object_name'])
-    #     try:
-    #         with contextlib.redirect_stderr(io.StringIO()):
-    #             self._root_client.revoke_role(user, role)
-    #     except pymilvus.exceptions.MilvusException:
-    #         pass
-    #
-    #     try:
-    #         with contextlib.redirect_stderr(io.StringIO()):
-    #             self._root_client.drop_role(role)
-    #     except pymilvus.exceptions.MilvusException:
-    #         pass
-
-    # def test_failed_login(self):
-    #     # .. note:: Import of a protected exception from a protected module.
-    #     # .. note:: This passes if `security.authorizationEnabled` is false.
-    #     # .. note:: The need to squelch stdout
-    #     from grpc._channel import _InactiveRpcError
-    #     with self.assertRaises(_InactiveRpcError), \
-    #          contextlib.redirect_stderr(io.StringIO()):
-    #         MilvusClient(URI, user=User.USER1, password='something invalid')
-    #
-    # def test_all_admin_privileges(self):
-    #     priv_params = (User.USER1,              # user
-    #                    User.role[User.USER1],   # Role
-    #                    'Global',                # object type
-    #                    'All',                   # privilege
-    #                    'All')                   # object_name
-    #     collections_list_wo_privileges = self._user1_client.list_collections()
-    #     self._add_privileges(*priv_params)
-    #     collections_list_w_privileges = self._user1_client.list_collections()
-    #
-    #     self._rm_privileges(*priv_params)
-    #
-    #     self.assertFalse(collections_list_wo_privileges)
-    #     self.assertEqual(sorted(User.collection.values()), sorted(collections_list_w_privileges))
-    #
-    # def test_load_collection_privileges(self):
-    #
-    #     # grpc._channel._MultiThreadedRendezvous: <_MultiThreadedRendezvous of RPC that terminated
-    #     # with:
-    #     # status = StatusCode.PERMISSION_DENIED
-    #     # details = "PrivilegeLoad: permission deny to user1 in the `default` database"
-    #     # debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"PrivilegeLoad:
-    #     # permission deny to user1 in the `default` database", grpc_status:7,
-    #     # created_time:"2024-05-24T15:14:31.03170218-06:00"}"
-    #     #
-    #     # .. note:: the import of the protected class from the protected module
-    #     # .. note:: the redirection of stderr
-    #     from grpc._channel import _MultiThreadedRendezvous
-    #     with self.assertRaises(_MultiThreadedRendezvous), \
-    #          contextlib.redirect_stderr(io.StringIO()):
-    #         self._user1_client.load_collection(User.collection[User.USER1])
-    #
-    #     priv_params = (User.USER1, User.role[User.USER1], 'Collection', 'Load',
-    #                    User.collection[User.USER1])
-    #     self._add_privileges(*priv_params)
-    #
-    #     exception_hit = None
-    #     try:
-    #         self._user1_client.load_collection(User.collection[User.USER1])
-    #     except _MultiThreadedRendezvous as err:
-    #         exception_hit = err
-    #     finally:
-    #         self._rm_privileges(*priv_params)
-    #
-    #     self.assertFalse(exception_hit, f'Hit error "{exception_hit}"')

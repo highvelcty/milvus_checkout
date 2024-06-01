@@ -8,7 +8,7 @@ class RootPath:
     DIST_OUTPUT = PATH / '__dist__'
     LOCAL_SERVER = PATH / 'local_server'
     SETUP_PY = PATH / 'setup.py'
-    PKG = PATH / 'milvus_client'
+    PKG = PATH / 'demo_client'
 
 
 class LocalServerPath:
