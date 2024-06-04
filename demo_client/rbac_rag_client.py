@@ -19,11 +19,7 @@ AIOLI_USERNAME = os.environ['AIOLI_USER']
 AIOLI_PASSWORD = os.environ['AIOLI_PW']
 MILVUS_ROOT_USERNAME = os.environ.get('MILVUS_ROOT_USERNAME', 'root')
 MILVUS_ROOT_PASSWORD = os.environ.get('MILVUS_ROOT_PASSWORD', 'Milvus')
-
 MILVUS_HOST = f'http://{AIOLI_HOST}:19530'
-
-# Constants
-PR_DIRS = ('/pfs/parse-hpe', '/pfs/parse-nvidia')
 
 
 class RbacRagClient:
@@ -242,6 +238,3 @@ class UserPassCollection:
         self._client.insert(collection_name=self._NAME,
                             data=[{self.Field.USERNAME: username,
                                    self.Field.PASSWORD: password}])
-
-
-

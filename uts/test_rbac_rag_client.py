@@ -1,15 +1,9 @@
 from unittest import skipIf, TestCase
 import time
 
-from demo_client.rbac_rag_client import (MILVUS_HOST, RbacRagClient, UserPassCollection,
-                                         MILVUS_ROOT_USERNAME, MILVUS_ROOT_PASSWORD)
-from demo_client import rbac_rag_client
+from demo_client.rbac_rag_client import (RbacRagClient, UserPassCollection, MILVUS_ROOT_USERNAME,
+                                         MILVUS_ROOT_PASSWORD)
 from pymilvus import MilvusClient
-
-
-# Notes from talking with Bijan
-# All directories except "code" directory will be documents to be indexed
-#
 from repo_tools import paths
 
 
