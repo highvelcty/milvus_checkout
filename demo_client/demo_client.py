@@ -49,13 +49,13 @@ class DemoClient:
                  uri: str = os.environ.get('MILVUS_DEMO_URI', 'http://localhost:19530'),
                  vector_dimension: int = os.environ.get('MILVUS_DEMO_VECTOR_DIMENSION', 8)):
         self._username = username
+        self._password = password
         self._collection_name = username + '_collection'
         self._role_name = username + '_role'
         self._uri = uri
         self._vector_dimension = vector_dimension
 
         self._root_client = pymilvus.MilvusClient(uri, user='root', password='Milvus')
-
         self._user_client = self._add_user(uri, username, password)
         self._add_collection()
 
@@ -82,7 +82,11 @@ class DemoClient:
         return self._uri
 
     @property
-    def username(self):
+    def password(self) -> str:
+        return self._password
+
+    @property
+    def username(self) -> str:
         return self._username
 
     @property

@@ -1,18 +1,10 @@
-from unittest import TestCase
-
-import logging
-import sys
-import textwrap
 import os
 
-from dotenv import load_dotenv
-
-from repo_tools import paths
-
-load_dotenv()
+# from dotenv import load_dotenv
+#
+# load_dotenv()
 from llama_index.core import Settings
 from llama_index.llms.openai_like import OpenAILike
-from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
 from llama_index.vector_stores.milvus import MilvusVectorStore
 from llama_index.core import StorageContext
@@ -22,10 +14,10 @@ from demo_client.utils import NeMoEmbedding, login_aioli, get_api_key
 
 
 from repo_tools import paths
-path_to_milvus_db = paths.RootPath.BUILD_OUTPUT / 'milvus_demo.db'
+from demo_client import DemoClient
 
 
-def get_query_engine():
+def get_query_engine(demo_client: DemoClient):
     aioli_host = os.environ['AIOLI_HOST']
     chat_api_base = f'http://{os.environ["AIOLI_CHAT_HOST"]}/v1'
 
@@ -33,10 +25,11 @@ def get_query_engine():
     nvidia_input_path = "/pfs/ingest_nvidia_prs/ingested_docs"
     vector_store_dir = "/pfs/out"
 
-    preexisting_milvus_db = path_to_milvus_db.exists()
+    # preexisting_milvus_db = path_to_milvus_db.exists()
 
     llm_host = "llama-2-13b-chat-hf.default.example.com"
     llm_model = "llama-2-13b-chat-hf"
+    tokenizer = "meta-llama/Llama-2-13b-chat-hf"
     emb_host = "nv-embed-qa.default.example.com"
     emb_model = "NV-Embed-QA"
 
@@ -47,7 +40,7 @@ def get_query_engine():
     default_headers_embedding = {"host": emb_host}
     chat = OpenAILike(model=llm_model, api_key=api_key, api_base=chat_api_base,
                       default_headers=default_headers_chat, is_chat_model=True,
-                      tokenizer="meta-llama/Llama-2-13b-chat-hf", temperature=0.1,
+                      tokenizer=tokenizer, temperature=0.1,
                       max_tokens=500)
     embedding = NeMoEmbedding(model=emb_model, api_key=api_key, api_base=chat_api_base,
                               default_headers=default_headers_embedding, truncate="END")
@@ -73,24 +66,30 @@ def get_query_engine():
     #         divide the dim(1536)
     #   2048: MilvusException: (code=2000, message=vector dimension mismatch, expected vector
     #         size(byte) 8192, actual 4096.: segcore error)>
-    print(f'emey overwrite: {not preexisting_milvus_db}')
-    print(f'emey db: {path_to_milvus_db}')
-    print(f'emey preexisting db: {preexisting_milvus_db}')
-    vector_store = MilvusVectorStore(uri=str(path_to_milvus_db),
-                                     dim=1024, overwrite=not preexisting_milvus_db)
+    # print(f'emey overwrite: {not preexisting_milvus_db}')
+    # print(f'emey milvus host: {demo_client.uri}')
+    # print(f'emey preexisting db: {preexisting_milvus_db}')
+    # vector_store = MilvusVectorStore(uri=MILVUS_HOST,
+    #                                  dim=1024, overwrite=not preexisting_milvus_db)
+
+    # meyere, overwrite will not be honored until user client returns the associated collection in
+    # the list.
+    vector_store = MilvusVectorStore(uri=demo_client.uri,
+                                     user=demo_client.username, password=demo_client.password,
+                                     collection_name=demo_client.collection_name,
+                                     dim=demo_client.vector_dimension, overwrite=False)
 
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    if preexisting_milvus_db:
-        print(f'emey loading from db')
-        index = VectorStoreIndex.from_vector_store(
-            vector_store, storage_context=storage_context
-        )
-    else:
-        print(f'emey loading from docs')
-        documents = SimpleDirectoryReader(str(path_to_docs)).load_data()
-        index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context
-        )
+    documents = SimpleDirectoryReader(str(path_to_docs)).load_data()
+    index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
+
+    # if preexisting_milvus_db:
+    #     print(f'emey loading from db')
+    #     index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
+    # else:
+    #     print(f'emey loading from docs')
+    #     documents = SimpleDirectoryReader(str(path_to_docs)).load_data()
+    #     index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
 
     return index.as_query_engine()

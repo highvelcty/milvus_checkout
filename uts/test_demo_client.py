@@ -93,8 +93,12 @@ class TestDemoClient(TestCase):
         for client in clients:
             client.remove_all()
 
+    def test_list_collections(self):
+        client = DemoClient(self._test_user, self._test_password)
+        print(client.user_client.list_collections())
 
-@skipIf(True, 'Long running test.')
+
+@skipIf(False, 'Long running test.')
 class TestDemoClientLoop(TestCase):
     def test(self):
         iterations = 100
