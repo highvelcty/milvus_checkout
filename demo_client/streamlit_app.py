@@ -14,7 +14,8 @@ from llama_index.llms.openai_like import OpenAILike
 
 from utils import (NeMoEmbedding, remove_prefix, login_aioli, get_api_key_by_id, get_deployments,
                    get_model_hostname, is_chat_model)
-from rbac_rag_client import RbacRagClient
+
+from llamaidx_rbac_rag_client import LlamaIdxRbacRagClient
 
 
 @dataclass
@@ -63,14 +64,12 @@ def get_embedding_client():
 
 
 def get_hpe_query_engine():
-    client = RbacRagClient(uri='http://localhost:19530', collection_name='parse_hpe')
-    client.add_documents('/home/eric/code/milvus_checkout/demo_client/docs/')
+    client = LlamaIdxRbacRagClient(collection_name='parse_hpe')
     return client.query_engine
 
 
 def get_nvidia_query_engine():
-    client = RbacRagClient(uri='http://localhost:19530', collection_name='parse_nvidia')
-    client.add_documents('/home/eric/code/milvus_checkout/demo_client/docs/')
+    client = LlamaIdxRbacRagClient(collection_name='parse_nvidia')
     return client.query_engine
 
 
@@ -171,8 +170,6 @@ def main():
             "Available Models", [m["name"] for m in deployments if "embed" not in m["name"]],
             key="models_selectbox")
         args.llm_model = st.session_state.models_selectbox
-        for deployment in deployments:
-            print(f'emey deployment: {deployment}')
         args.model_id = deployments[[m["name"] for m in deployments].index(args.llm_model)]["model"]
         args.api_key = get_api_key_by_id(args.aioli_host, st.session_state["token"], args.model_id)
         args.llm_host = get_model_hostname(args.aioli_host, st.session_state["token"],
@@ -283,6 +280,7 @@ def main():
                 for t in threads:
                     t.join()
                 col1, col2 = st.columns(2)
+
             with col1:
                 output = responses["no_rag"]
                 st.markdown("### LLM (Out of the box) Output :smile:")
@@ -305,8 +303,8 @@ def main():
 
                         related_docs = responses["hpe"].source_nodes
                         for i, x in enumerate(related_docs):
-                            title = x.node.metadata["title"]
-                            url = x.node.metadata["file_name"]
+                            title = x.node.metadata["file_name"]
+                            url = x.node.metadata["file_path"]
                             st.markdown(f'#{i+1}: from "{title}"\n\n[{url}]({url})\n')
                             st.text("\n".join(textwrap.wrap(x.node.text, 80)))
                             if i < len(related_docs) - 1:
@@ -318,8 +316,8 @@ def main():
 
                         related_docs = responses["nvidia"].source_nodes
                         for i, x in enumerate(related_docs):
-                            title = x.node.metadata["title"]
-                            url = x.node.metadata["file_name"]
+                            title = x.node.metadata["file_name"]
+                            url = x.node.metadata["file_path"]
                             st.markdown(f'#{i+1}: from "{title}"\n\n[{url}]({url})\n')
                             st.text("\n".join(textwrap.wrap(x.node.text, 80)))
                             if i < len(related_docs) - 1:

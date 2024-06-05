@@ -1,8 +1,9 @@
 from unittest import skipIf, TestCase
 import time
 
-from demo_client.rbac_rag_client import (RbacRagClient, UserPassCollection, MILVUS_ROOT_USERNAME,
-                                         MILVUS_ROOT_PASSWORD)
+from demo_client.base_rbac_rag_client import (UserPassCollection, MILVUS_ROOT_USERNAME,
+                                              MILVUS_ROOT_PASSWORD)
+from demo_client.llamaidx_rbac_rag_client import LlamaIdxRbacRagClient
 from pymilvus import MilvusClient
 from repo_tools import paths
 
@@ -16,23 +17,25 @@ class Test(Base):
     _test_password = 'test_password'
 
     def test_get_query_engine(self):
-        with (RbacRagClient(uri=self._milvus_host, username=self._test_user,
-              password=self._test_password) as client):
+        with (LlamaIdxRbacRagClient(uri=self._milvus_host, username=self._test_user,
+                                    password=self._test_password) as client):
             client.add_documents(paths.RootPath.PKG / 'docs')
-            resp = client.query_engine.query('Who is the author?')
+            resp = client.query('Who is the author?')
+            from pprint import pprint
+            pprint(resp)
             self.assertTrue('Paul Graham' in str(resp))
             client.remove_all()
 
     def test_open_from_existing(self):
-        client = RbacRagClient(self._milvus_host,
-                               username=self._test_user, password=self._test_password)
+        client = LlamaIdxRbacRagClient(self._milvus_host,
+                                       username=self._test_user, password=self._test_password)
         client.add_documents(paths.RootPath.PKG / 'docs')
 
         client.close()
 
-        client = RbacRagClient(self._milvus_host,
-                               username=self._test_user, password=self._test_password)
-        resp = client.query_engine.query("What is the author's last name?")
+        client = LlamaIdxRbacRagClient(self._milvus_host,
+                                       username=self._test_user, password=self._test_password)
+        resp = client.query("What is the author's last name?")
         self.assertTrue('Graham' in str(resp))
         client.remove_all()
 
@@ -43,8 +46,8 @@ class TestUserPass(Base):
     _root_client = None
 
     def test_create_new_collection_and_new_user(self):
-        client = RbacRagClient(uri=self._milvus_host,
-                               username=self._test_user, password=self._test_password)
+        client = LlamaIdxRbacRagClient(uri=self._milvus_host,
+                                       username=self._test_user, password=self._test_password)
         client.close()
 
         root_client = MilvusClient(uri=self._milvus_host,
@@ -54,16 +57,16 @@ class TestUserPass(Base):
         root_client.drop_collection(UserPassCollection._NAME)
         self.assertFalse(UserPassCollection._NAME in root_client.list_collections())
 
-        client = RbacRagClient(uri=self._milvus_host,
-                               username=self._test_user, password=self._test_password)
+        client = LlamaIdxRbacRagClient(uri=self._milvus_host,
+                                       username=self._test_user, password=self._test_password)
         client.remove_all()
 
     def test_invalid_password(self):
-        with (RbacRagClient(uri=self._milvus_host, username=self._test_user,
-                            password=self._test_password) as client):
+        with (LlamaIdxRbacRagClient(uri=self._milvus_host, username=self._test_user,
+                                    password=self._test_password) as client):
             with self.assertRaises(PermissionError):
-                RbacRagClient(uri=self._milvus_host,
-                              username=self._test_user, password='invalid_password')
+                LlamaIdxRbacRagClient(uri=self._milvus_host,
+                                      username=self._test_user, password='invalid_password')
             client.remove_all()
 
 
@@ -76,7 +79,7 @@ class TestDemoClientLoop(Base):
 
         for iteration in range(iterations):
             startt = time.time()
-            client = RbacRagClient(username='test_user', password='test_password')
+            client = LlamaIdxRbacRagClient(username='test_user', password='test_password')
             client.remove_all()
             #
             client.close()

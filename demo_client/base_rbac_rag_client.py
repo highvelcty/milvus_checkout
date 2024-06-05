@@ -1,6 +1,5 @@
-import io
-from typing import Optional, Tuple
-import contextlib
+from abc import abstractmethod
+from typing import Optional
 import os
 
 try:
@@ -10,10 +9,6 @@ except ImportError:
     # Provided by this repo
     from demo_client.utils import NeMoEmbedding, login_aioli, get_api_key
 
-from llama_index.core.base.base_query_engine import BaseQueryEngine
-from llama_index.core import Settings, SimpleDirectoryReader, StorageContext, VectorStoreIndex
-from llama_index.llms.openai_like import OpenAILike
-from llama_index.vector_stores.milvus import MilvusVectorStore
 from pymilvus import DataType, MilvusClient
 
 # Environment Variables
@@ -23,30 +18,52 @@ AIOLI_USERNAME = os.environ['AIOLI_USER']
 AIOLI_PASSWORD = os.environ['AIOLI_PW']
 MILVUS_ROOT_USERNAME = os.environ.get('MILVUS_ROOT_USERNAME', 'root')
 MILVUS_ROOT_PASSWORD = os.environ.get('MILVUS_ROOT_PASSWORD', 'Milvus')
-MILVUS_HOST = f'http://{AIOLI_HOST}:19530'
+# MILVUS_HOST = f'http://{AIOLI_HOST}:19530'
+MILVUS_HOST = f'http://localhost:19530'
 
 
-class RbacRagClient:
+class BaseRbacRagClient:
     """An retrieval augmented generation (RAG) client with simple role based access control
        (RBAC) support."""
     _USERPASS_COLLECTION = 'userpass'
 
-    def __init__(self, uri: str = MILVUS_HOST,
-                 username: str = AIOLI_USERNAME, password: str = AIOLI_PASSWORD,
-                 collection_name: str = '',
-                 chunk_overlap: int = 20,
-                 chunk_size: int = 256,
-                 embedding_host: str = 'nv-embed-qa.default.example.com',
-                 embedding_model: str = 'NV-Embed-QA',
-                 llm_host: str = 'llama-2-13b-chat-hf.default.example.com',
-                 llm_model: str = 'llama-2-13b-chat-hf',
-                 max_tokens: int = 500,
-                 temperature: float = 0.1,
-                 tokenizer: str = 'meta-llama/Llama-2-13b-chat-hf',
-                 vector_dimension: int = 1024):
+    class DefaultArg:
+        uri = MILVUS_HOST
+        username = AIOLI_USERNAME
+        password = AIOLI_PASSWORD
+        collection_name = ''
+        chunk_overlap = 20
+        chunk_size = 256
+        embedding_host = 'nv-embed-qa.default.example.com'
+        embedding_model = 'NV-Embed-QA'
+        llm_host = 'llama-2-13b-chat-hf.default.example.com'
+        llm_model = 'llama-2-13b-chat-hf'
+        max_tokens = 500
+        temperature = 0.1
+        tokenizer = 'meta-llama/Llama-2-13b-chat-hf'
+        vector_dimension = 1024
+
+    def __init__(self, uri: str = DefaultArg.uri,
+                 username: str = DefaultArg.username,
+                 password: str = DefaultArg.password,
+                 collection_name: str = DefaultArg.collection_name,
+                 chunk_overlap: int = DefaultArg.chunk_overlap,
+                 chunk_size: int = DefaultArg.chunk_size,
+                 embedding_host: str = DefaultArg.embedding_host,
+                 embedding_model: str = DefaultArg.embedding_model,
+                 llm_host: str = DefaultArg.llm_host,
+                 llm_model: str = DefaultArg.llm_model,
+                 max_tokens: int = DefaultArg.max_tokens,
+                 temperature: float = DefaultArg.temperature,
+                 tokenizer: str = DefaultArg.tokenizer,
+                 vector_dimension: int = DefaultArg.vector_dimension):
 
         self._uri = uri
         self._username = username
+        if collection_name:
+            self._collection_name = f'{username}_{collection_name}'
+        else:
+            self._collection_name = f'{username}_collection'
         self._chunk_overlap = chunk_overlap
         self._chunk_size = chunk_size
         self._embedding_host = embedding_host
@@ -58,11 +75,7 @@ class RbacRagClient:
         self._tokenizer = tokenizer
         self._vector_dimension = vector_dimension
 
-        if collection_name:
-            self._collection_name = f'{username}_{collection_name}'
-        else:
-            self._collection_name = f'{username}_collection'
-
+        # Lazy initialized on first access.
         self._query_engine = None
 
         # Check credentials, creating as needed.
@@ -72,9 +85,6 @@ class RbacRagClient:
                 userpass.insert(username, password)
             elif saved_pass != password:
                 raise PermissionError(f'Invalid password for username "{username}"')
-
-        # Create vector store for retrieval augmented generation (RAG)
-        self._vector_store, self._index = self._add_rag_index()
 
     def __enter__(self):
         return self
@@ -115,6 +125,11 @@ class RbacRagClient:
         return self._max_tokens
 
     @property
+    @abstractmethod
+    def query_engine(self):
+        ...
+
+    @property
     def tokenizer(self) -> str:
         return self._tokenizer
 
@@ -127,23 +142,19 @@ class RbacRagClient:
         return self._uri
 
     @property
-    def query_engine(self) -> BaseQueryEngine:
-        if self._query_engine is None:
-            self._query_engine = self._index.as_query_engine()
-        return self._query_engine
-
-    @property
     def username(self) -> str:
         return self._username
 
+    @abstractmethod
     def add_documents(self, *paths_to_doc_dirs):
-        for path_to_doc_dir in paths_to_doc_dirs:
-            documents = SimpleDirectoryReader(str(path_to_doc_dir)).load_data()
-            self._index = VectorStoreIndex.from_documents(
-                documents, storage_context=self._index.storage_context)
+        ...
 
     def close(self):
-        self._vector_store.client.close()
+        ...
+
+    @abstractmethod
+    def query(self, query_str):
+        ...
 
     def remove_all(self):
         UserPassCollection(self.uri,
@@ -151,40 +162,13 @@ class RbacRagClient:
         self._rm_collection()
         self.close()
 
-    def _add_rag_index(self) -> Tuple[MilvusVectorStore, VectorStoreIndex]:
-        user_token = login_aioli(AIOLI_HOST, AIOLI_USERNAME, AIOLI_PASSWORD)
+    @abstractmethod
+    def _add_rag_index(self):
+        ...
 
-        with contextlib.redirect_stdout(io.StringIO()):
-            api_key = get_api_key(AIOLI_HOST, user_token, self._llm_model)
-
-        default_headers_chat = {'host': self._llm_host}
-        default_headers_embedding = {'host': self._embedding_host}
-        chat = OpenAILike(model=self._llm_model, api_key=api_key, api_base=CHAT_API_BASE,
-                          default_headers=default_headers_chat, is_chat_model=True,
-                          tokenizer=self._tokenizer, temperature=self._temperature,
-                          max_tokens=self._max_tokens)
-        embedding = NeMoEmbedding(model=self._embedding_model, api_key=api_key,
-                                  api_base=CHAT_API_BASE,
-                                  default_headers=default_headers_embedding, truncate="END")
-
-        Settings.llm = chat
-        Settings.embedding = embedding
-        Settings.embed_model = embedding
-        Settings.chunk_size = self._chunk_size
-        Settings.chunk_overlap = self._chunk_overlap
-
-        vector_store = MilvusVectorStore(uri=self.uri, user=MILVUS_ROOT_USERNAME,
-                                         password=MILVUS_ROOT_PASSWORD,
-                                         collection_name=self._collection_name,
-                                         dim=self.vector_dimension, overwrite=False)
-
-        storage_context = StorageContext.from_defaults(vector_store=vector_store)
-
-        return (vector_store,
-                VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context))
-
+    @abstractmethod
     def _rm_collection(self):
-        self._vector_store.client.drop_collection(self._collection_name)
+        ...
 
 
 class UserPassCollection:
