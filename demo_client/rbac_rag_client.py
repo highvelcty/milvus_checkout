@@ -3,8 +3,12 @@ from typing import Optional, Tuple
 import contextlib
 import os
 
-# meyere, this to be provided by the demo group
-from demo_client.utils import NeMoEmbedding, login_aioli, get_api_key
+try:
+    # Provided by the demo group
+    from utils import NeMoEmbedding, login_aioli, get_api_key
+except ImportError:
+    # Provided by this repo
+    from demo_client.utils import NeMoEmbedding, login_aioli, get_api_key
 
 from llama_index.core.base.base_query_engine import BaseQueryEngine
 from llama_index.core import Settings, SimpleDirectoryReader, StorageContext, VectorStoreIndex
@@ -23,14 +27,13 @@ MILVUS_HOST = f'http://{AIOLI_HOST}:19530'
 
 
 class RbacRagClient:
-    """An retrieval augmented generation (RAG) client with simple role based access control (
-    RBAC) support."""
-
-    # ask: Add parameters for the chunking/embedding
+    """An retrieval augmented generation (RAG) client with simple role based access control
+       (RBAC) support."""
     _USERPASS_COLLECTION = 'userpass'
 
     def __init__(self, uri: str = MILVUS_HOST,
                  username: str = AIOLI_USERNAME, password: str = AIOLI_PASSWORD,
+                 collection_name: str = '',
                  chunk_overlap: int = 20,
                  chunk_size: int = 256,
                  embedding_host: str = 'nv-embed-qa.default.example.com',
@@ -55,7 +58,11 @@ class RbacRagClient:
         self._tokenizer = tokenizer
         self._vector_dimension = vector_dimension
 
-        self._collection_name = username + '_collection'
+        if collection_name:
+            self._collection_name = f'{username}_{collection_name}'
+        else:
+            self._collection_name = f'{username}_collection'
+
         self._query_engine = None
 
         # Check credentials, creating as needed.
@@ -190,6 +197,7 @@ class UserPassCollection:
     class Field:
         USERNAME = 'username'
         PASSWORD = 'password'
+        VECTOR = 'vector'
 
     def __init__(self, uri: str, root_username: str, root_password: str):
         self._client = MilvusClient(uri, root_username, root_password)
@@ -204,6 +212,7 @@ class UserPassCollection:
                              datatype=DataType.VARCHAR, max_length=256, is_primary=True)
             schema.add_field(field_name=self.Field.PASSWORD,
                              datatype=DataType.VARCHAR, max_length=256)
+            schema.add_field(field_name=self.Field.VECTOR, datatype=DataType.FLOAT_VECTOR, dim=2)
 
             self._client.create_collection(collection_name=self._NAME,
                                            consistency_level='Strong',
@@ -212,9 +221,10 @@ class UserPassCollection:
             index_params = self._client.prepare_index_params()
             index_params.add_index(field_name=self.Field.USERNAME)
             index_params.add_index(field_name=self.Field.PASSWORD)
-            self._client.create_index(collection_name=self._NAME,
-                                      index_params=index_params)
-            self._client.load_collection(self._NAME)
+            index_params.add_index(field_name=self.Field.VECTOR)
+            self._client.create_index(collection_name=self._NAME, index_params=index_params)
+
+        self._client.load_collection(self._NAME)
 
     def __enter__(self):
         return self
@@ -237,4 +247,5 @@ class UserPassCollection:
     def insert(self, username: str, password: str):
         self._client.insert(collection_name=self._NAME,
                             data=[{self.Field.USERNAME: username,
-                                   self.Field.PASSWORD: password}])
+                                   self.Field.PASSWORD: password,
+                                   self.Field.VECTOR: [1.0, 1.0]}])

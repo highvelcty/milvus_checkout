@@ -9,20 +9,19 @@ import json
 
 class NeMoEmbedding(NVIDIAEmbedding):
     def __init__(
-        self,
-        model: str = "NV-Embed-QA",
-        embed_batch_size: int = 100,
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
-        max_retries: int = 10,
-        timeout: float = 60.0,
-        callback_manager: Optional[CallbackManager] = None,
-        default_headers: Optional[Dict[str, str]] = None,
-        **kwargs: Any,
+            self,
+            model: str = "NV-Embed-QA",
+            embed_batch_size: int = 100,
+            api_key: Optional[str] = None,
+            api_base: Optional[str] = None,
+            max_retries: int = 10,
+            timeout: float = 60.0,
+            callback_manager: Optional[CallbackManager] = None,
+            default_headers: Optional[Dict[str, str]] = None,
+            **kwargs: Any,
     ):
         if embed_batch_size > 259:
             raise ValueError("The batch size should not be larger than 259.")
-
         self._client = OpenAI(
             api_key=api_key,
             base_url=api_base,
@@ -30,7 +29,6 @@ class NeMoEmbedding(NVIDIAEmbedding):
             max_retries=max_retries,
             default_headers=default_headers
         )
-
         self._aclient = AsyncOpenAI(
             api_key=api_key,
             base_url=api_base,
@@ -38,7 +36,6 @@ class NeMoEmbedding(NVIDIAEmbedding):
             max_retries=max_retries,
             default_headers=default_headers
         )
-
         super(NVIDIAEmbedding, self).__init__(
             model=model,
             embed_batch_size=embed_batch_size,
@@ -49,9 +46,9 @@ class NeMoEmbedding(NVIDIAEmbedding):
     def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Get text embeddings."""
         assert len(texts) <= 259, "The batch size should not be larger than 259."
-
         data = self._client.embeddings.create(
-            input=texts, model=self.model, extra_body={"input_type": "passage", "truncate": self.truncate}
+            input=texts, model=self.model,
+            extra_body={"input_type": "passage", "truncate": self.truncate}
         ).data
         return [d.embedding for d in data]
 
@@ -73,15 +70,12 @@ class NeMoEmbedding(NVIDIAEmbedding):
 def is_before_date(date1: str, date2: str) -> bool:
     """
     Check if date1 is before date2.
-
     Args:
     date1 (str): First date string in "yyyy-mm-dd" format.
     date2 (str): Second date string in "yyyy-mm-dd" format.
-
     Returns:
     bool: True if date1 is before date2, False otherwise.
     """
-
     datetime1 = datetime.strptime(date1, '%Y-%m-%d')
     datetime2 = datetime.strptime(date2, '%Y-%m-%d')
     return datetime1 < datetime2
@@ -90,19 +84,17 @@ def is_before_date(date1: str, date2: str) -> bool:
 def days_after_1900(date_string: str) -> int:
     """
     Convert a date string in "yyyy-mm-dd" format to the number of days after 1900-01-01.
-
     Args:
     date_string (str): Date string in "yyyy-mm-dd" format.
-
     Returns:
     int: Number of days after 1900-01-01.
     """
     from datetime import datetime
-
     date = datetime.strptime(date_string, "%Y-%m-%d")
     base_date = datetime(1900, 1, 1)
     delta = date - base_date
     return delta.days
+
 
 def remove_prefix(text, prefix):
     if text.startswith(prefix):
@@ -117,6 +109,7 @@ def login_aioli(aioli_host, username, password):
     result = json.loads(response.text)
     return result["token"]
 
+
 def get_deployments(aioli_host, token):
     endpoint = f"http://{aioli_host}:80/api/v1/deployments"
     header = {"Authorization": f"Bearer {token}"}
@@ -124,12 +117,14 @@ def get_deployments(aioli_host, token):
     assert response.status_code == 200, f"Failed to get deployments from Aioli: {response.text}"
     return json.loads(response.text)
 
+
 def get_models(aioli_host, token):
     endpoint = f"http://{aioli_host}:80/api/v1/models"
     header = {"Authorization": f"Bearer {token}"}
     response = requests.get(endpoint, headers=header)
     assert response.status_code == 200, f"Failed to get models from Aioli: {response.text}"
     return json.loads(response.text)
+
 
 def get_api_key(aioli_host, token, model_name):
     models = get_models(aioli_host, token)
@@ -149,6 +144,18 @@ def get_api_key(aioli_host, token, model_name):
     result = json.loads(response.text)
     return result["token"]
 
+
+def get_api_key_by_id(aioli_host, token, model_id):
+    models = get_models(aioli_host, token)
+    assert model_id in [m["id"] for m in models], f"Model {model_id} not found."
+    endpoint = f"http://{aioli_host}:80/api/v1/models/{model_id}/token"
+    header = {"Authorization": f"Bearer {token}"}
+    response = requests.get(endpoint, headers=header)
+    assert response.status_code == 200, f"Failed to get API key from Aioli: {response.text}"
+    result = json.loads(response.text)
+    return result["token"]
+
+
 def get_model_hostname(aioli_host, token, model_name):
     endpoint = f"http://{aioli_host}:80/api/v1/deployments"
     header = {"Authorization": f"Bearer {token}"}
@@ -162,3 +169,24 @@ def get_model_hostname(aioli_host, token, model_name):
             except Exception as e:
                 raise ValueError(f"Failed to get hostname for model {model_name}: {e}")
     raise ValueError(f"Model {model_name} not found.")
+
+
+def is_chat_model(aioli_host, token, model_id):
+    models = get_models(aioli_host, token)
+    model_name = [m["name"] for m in models if m["id"] == model_id][0]
+    chat_mapping = {
+        "llama-3-8b": False,
+        "llama-3-8b-instruct": True,
+        "llama-2-13b-chat-hf": True
+    }
+    if model_name in chat_mapping:
+        return chat_mapping[model_name]
+    if "chat" in model_name or "instruct" in model_name:
+        return True
+    return False
+
+
+if __name__ == "__main__":
+    aioli_host = "34.168.33.192"
+    token = login_aioli(aioli_host, "liam", "hperocks")
+    print(get_deployments(aioli_host, token))
