@@ -66,14 +66,9 @@ def get_query_engine(demo_client: DemoClient):
     #         divide the dim(1536)
     #   2048: MilvusException: (code=2000, message=vector dimension mismatch, expected vector
     #         size(byte) 8192, actual 4096.: segcore error)>
-    # print(f'emey overwrite: {not preexisting_milvus_db}')
-    # print(f'emey milvus host: {demo_client.uri}')
-    # print(f'emey preexisting db: {preexisting_milvus_db}')
     # vector_store = MilvusVectorStore(uri=MILVUS_HOST,
     #                                  dim=1024, overwrite=not preexisting_milvus_db)
 
-    # meyere, overwrite will not be honored until user client returns the associated collection in
-    # the list.
     vector_store = MilvusVectorStore(uri=demo_client.uri,
                                      user=demo_client.username, password=demo_client.password,
                                      collection_name=demo_client.collection_name,
@@ -83,13 +78,5 @@ def get_query_engine(demo_client: DemoClient):
 
     documents = SimpleDirectoryReader(str(path_to_docs)).load_data()
     index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
-
-    # if preexisting_milvus_db:
-    #     print(f'emey loading from db')
-    #     index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
-    # else:
-    #     print(f'emey loading from docs')
-    #     documents = SimpleDirectoryReader(str(path_to_docs)).load_data()
-    #     index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
 
     return index.as_query_engine()

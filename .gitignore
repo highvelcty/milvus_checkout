@@ -6,7 +6,7 @@ __venv__
 
 # IDEs
 # pycharm
-.idea
+.idea/
 
 # Distribution / packaging
 __build__/

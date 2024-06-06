@@ -18,8 +18,7 @@ AIOLI_USERNAME = os.environ['AIOLI_USER']
 AIOLI_PASSWORD = os.environ['AIOLI_PW']
 MILVUS_ROOT_USERNAME = os.environ.get('MILVUS_ROOT_USERNAME', 'root')
 MILVUS_ROOT_PASSWORD = os.environ.get('MILVUS_ROOT_PASSWORD', 'Milvus')
-# MILVUS_HOST = f'http://{AIOLI_HOST}:19530'
-MILVUS_HOST = f'http://localhost:19530'
+MILVUS_HOST = f'http://{AIOLI_HOST}:19530'
 
 
 class BaseRbacRagClient:
